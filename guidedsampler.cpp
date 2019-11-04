@@ -11,6 +11,7 @@ enum {
 STRAT_SMTBIT,
 STRAT_SMTBV,
 STRAT_SAT,
+STRAT_BLOCK,
 STRAT_PRED_HARD,
 STRAT_PRED_SOFT,
 STRAT_FLIP_PREDS,
@@ -126,7 +127,7 @@ public:
         opt.set(params);
         solver.set(params);
         convert = strategy == STRAT_SAT;
-        if (strategy == STRAT_PRED_SOFT || strategy == STRAT_PRED_HARD) {
+        if (strategy == STRAT_BLOCK || strategy == STRAT_PRED_SOFT || strategy == STRAT_PRED_HARD) {
             use_predicates = true;
         }
         if (strategy == STRAT_FLIP_PREDS) {
@@ -159,8 +160,20 @@ public:
         parse_smt();
         results_file.open(input_file + ".samples");
         while (true) {
+            if (strategy == STRAT_BLOCK) {
+                z3::check_result result = solve();
+                if (result == z3::sat) {
+                    output(model, 0);
+                    if (samples % 10 == 0)
+                        print_stats();
+                }
+
+                continue;
+            }
+
             opt.push();
             solver.push();
+
             if (random_soft_preds || strategy == STRAT_PRED_SOFT) {
                 for (z3::expr & v : predicates) {
                     if (rand() % 2)
@@ -1112,6 +1125,18 @@ public:
                     std::string pred_string = get_preds(m);
                     all_preds.insert(pred_string);
                     results_file << "P: " << pred_string << '\n';
+		    if (strategy == STRAT_BLOCK) {
+			z3::expr_vector clause(c);
+			int index = 0;
+                        for (z3::expr & v : predicates) {
+		            if (pred_string[index] == '1')
+                                clause.push_back(!v);
+                            else
+                                clause.push_back(v);
+			    ++index;
+                        }
+			solver.add(mk_or(clause));
+		    }
                 }
 	    }
 	    ++valid_samples;
@@ -1190,7 +1215,7 @@ public:
         }
         z3::check_result result = z3::unknown;
         try {
-            if (strategy != STRAT_PRED_HARD)
+            if (strategy != STRAT_BLOCK && strategy != STRAT_PRED_HARD)
                 result = opt.check();
         } catch (z3::exception except) {
             std::cout << "Exception: " << except << "\n";
@@ -1204,8 +1229,9 @@ public:
                 std::cout << "Exception: " << except << "\n";
             }
             if (result == z3::sat) {
-                std::cout << 'S';
                 model = solver.get_model();
+                if (strategy != STRAT_BLOCK)
+                    std::cout << 'S';
             } else if (result == z3::unknown) {
                 std::cout << 'T';
             } else if (strategy != STRAT_PRED_HARD) {
@@ -1345,6 +1371,8 @@ int main(int argc, char * argv[]) {
             strategy = STRAT_SMTBV;
         else if (strcmp(argv[i], "--sat") == 0)
             strategy = STRAT_SAT;
+        else if (strcmp(argv[i], "--block-classes") == 0)
+            strategy = STRAT_BLOCK;
         else if (strcmp(argv[i], "--pred-hard") == 0)
             strategy = STRAT_PRED_HARD;
         else if (strcmp(argv[i], "--pred-soft") == 0)
