@@ -30,7 +30,6 @@ cp ../GuidedSampler/z3-patch/permutation_matrix.h src/util/lp/permutation_matrix
 python scripts/mk_make.py
 cd build
 make
-sudo make install
 cd ../..
 ```
 
